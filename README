@@ -1,0 +1,78 @@
+
+
+In realizarea sistemului monetar de tip Internet Banking informatiile despre 
+users din fisierul de intrare sunt parsate si salvate in server.
+
+Pentru rezalizarea serviciilor de internet banking (IBANK) am creat un socket 
+TCP pe care asteptam cereri de conexiune la portul specificat. Astfel pe 
+conexiunea TCP intre server si clienti sunt asteptate urmatoarele comenzi de la 
+tastatura:
+	-> login <numar_card> <pin>
+	Clientul trimite asta cerere catre sever, iar serverul verifica daca 
+este posibila conectarea la card. Serverul salveaza pentru fiecare client 
+contectat cardul cu care s-a autentificat.
+	Pentru a nu se realiza conectarea pe aceleasi card de catre 2 clienti 
+diferiti, utilizez intr-o variabila de control open_session, care este setata 
+TRUE in momentul logarii cu succes pe un card.
+	Comanda este trimisa la server doar in cazul in care nu exista deja un 
+card logat. Serverul verifica daca numar_card exista in baza de date (vectorul
+ users), daca acest cu acest card s-a logat un client si daca pinul introdus 
+este corect. 
+	In cazul in care se introduce pinul gresit de 3 ori consecutiv, cardul 
+se blocheaza (incrementez numarul de incercari la fiecare pin introdus gresit).
+ Dar daca inainte de blocarea cardului se incearca login cu un alt card existent, 
+se reseteaza contorul pentru numarul de incercari al cardului anterior. Acest 
+lucru il verific prin salvarea numarului de card folosit anterior si prin 
+verificarea cu numarul cardului curent.
+
+	-> logout 
+	Clientul trimite acesta comanda catre server ca sa il anunte ca vrea sa 
+se deconecteze. Astfel, in client vom seta open_session cu FALSE, daca exista un 
+card autentificat. Serverul verifica cauta  cardul pentru client este logat si 
+reseteaza starea cardului, daca il gaseste. Altfe, afiseaza un mesaj de eroare.
+
+	-> listsold 
+	 Serverul afiseaza soldul cardului cu care clientul este autentificat.
+	
+	-> transfer <numar_card> <suma>
+	Serverul verifica daca <numar_card> este un card valid si daca <suma> 
+este mai mica decat soldul cardului cu care clientul este autentificat. Daca 
+transferul se poate realiza, seteaza pentru cardul clientului campurile: 
+open_transfer, transfer_to, transfer_sum, trimite un raspunsul catre client si 
+ii cerere aprobarea (functia verify_transfer din header.h). 
+	Daca clientul confirma, banii vor fi mutati din cont, altfel se trimite 
+un mesaj de eroare. Serverul cauta in vectorul de users un card al clientului 
+pentru care open_transfer = TRUE, si foloseste campurile  transfer_to si 
+transfer_sum pentru a gasi cardul catre care sa trimita banii si ce suma sa 
+trimita. (finalize_transfer din header.h). 
+	Serverul va stii daca comanda primita de la client este confirmarea sau 
+refuzul transferului, fiindca acesta verifica ca ultima comanda trimisa anterior 
+de client sa fie "transfer". 
+	
+	
+Pentru rezalizarea serviciilor de deblocare cont (UNLOCK) am creat un socket UDP 
+pe care asteptam cereri de conexiune la portul specificat.
+	-> unlock (execute_unlock in header.h)
+	Clientul vrea sa deblocheze ultimul card cu care a incercat sa se logheze 
+si trimite comanda catre server pe socketul UDP, impreuna cu <numar_card>. Acesta 
+va astepta raspunsul de la server tot pe socketul UDP. Serverul verifica daca
+ <numar_card> exista si daca este blocat. In caz contrar, trimite mesajele de
+ eroare corespunzatoare. Altfel, ii cere clientului parola secreta pentru 
+declocare, daca primeste parola corecta reseteaza starea cardului.
+	Clientul trimite parola secreta catre server doar in cazul in care ultima 
+comanda anterioara trimisa a fost "unlock", si a primit raspunsul de la server 
+"Trimite parola secreta"( in acest caz setez o variabila de control 
+last_command = "unlock").
+
+-> quit <client>
+	Daca serverul primeste de la un client aceasta comanda deconectez cardul 
+cu care este autentifiat clientul in momentul respectiv (resetez starea cardului). 
+Cum clientul se inchide, scot socket-ul pe care am primit aceasta comanda din 
+multimea de citire, iar din client inchid conexiunile TCP SI UDP, si fisierul 
+de log al clientului. 
+
+-> quit <server>
+	Daca FD_ISSET(STDIN_FILENO, &tmp_fds), inseamna ca vine ceva de la 
+tastatura. Am primit "quit" si parcurg toate socketurile care nu sunt conexiuni 
+TCP/UDP si le inchid. In continuare inchid socketul serverului, inchid fisierul 
+de intrare si dau return 0; .
